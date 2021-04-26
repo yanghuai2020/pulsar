@@ -19,6 +19,7 @@
 package org.apache.pulsar.tests.integration.presto;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,7 @@ import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.schema.JSONSchema;
@@ -43,7 +45,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Test presto query from tiered storage.
+ * Test presto query from tiered storage, the Pulsar SQL is cluster mode.
  */
 @Slf4j
 public class TestPrestoQueryTieredStorage extends TestPulsarSQLBase {
@@ -53,8 +55,19 @@ public class TestPrestoQueryTieredStorage extends TestPulsarSQLBase {
 
     private S3Container s3Container;
 
-    @BeforeClass
-    public void setupExtraContainers() throws Exception {
+    @Override
+    public void setupCluster() throws Exception {
+        super.setupCluster();
+        setupExtraContainers();
+    }
+
+    @Override
+    public void tearDownCluster() throws Exception {
+        teardownPresto();
+        super.tearDownCluster();
+    }
+
+    private void setupExtraContainers() throws Exception {
         log.info("[TestPrestoQueryTieredStorage] setupExtraContainers...");
         pulsarCluster.runAdminCommandOnAnyBroker( "tenants",
                 "create", "--allowed-clusters", pulsarCluster.getClusterName(),
@@ -92,7 +105,6 @@ public class TestPrestoQueryTieredStorage extends TestPulsarSQLBase {
         return sb.toString();
     }
 
-    @AfterClass
     public void teardownPresto() {
         log.info("[TestPrestoQueryTieredStorage] tearing down...");
         if (null != s3Container) {
@@ -106,18 +118,21 @@ public class TestPrestoQueryTieredStorage extends TestPulsarSQLBase {
     public void testQueryTieredStorage1() throws Exception {
         TopicName topicName = TopicName.get(
                 TopicDomain.persistent.value(), TENANT, NAMESPACE, "stocks_ts_nons_" + randomName(5));
-        pulsarSQLBasicTest(topicName, false, false);
+        pulsarSQLBasicTest(topicName, false, false, JSONSchema.of(Stock.class));
     }
 
     @Test
     public void testQueryTieredStorage2() throws Exception {
         TopicName topicName = TopicName.get(
                 TopicDomain.persistent.value(), TENANT, NAMESPACE, "stocks_ts_ns_" + randomName(5));
-        pulsarSQLBasicTest(topicName, false, true);
+        pulsarSQLBasicTest(topicName, false, true, JSONSchema.of(Stock.class));
     }
 
     @Override
-    protected int prepareData(TopicName topicName, boolean isBatch, boolean useNsOffloadPolices) throws Exception {
+    protected int prepareData(TopicName topicName,
+                              boolean isBatch,
+                              boolean useNsOffloadPolices,
+                              Schema schema) throws Exception {
         @Cleanup
         PulsarClient pulsarClient = PulsarClient.builder()
                 .serviceUrl(pulsarCluster.getPlainTextServiceUrl())
@@ -203,6 +218,15 @@ public class TestPrestoQueryTieredStorage extends TestPulsarSQLBase {
             admin.topics().unload(topicName.toString());
         } catch (Exception e) {
             Assert.fail("Failed to deleteOffloadedDataFromBK.");
+        }
+    }
+
+    @Override
+    protected void validateContent(int messageNum, String[] contentArr, Schema schema) {
+        for (int i = 0; i < messageNum; ++i) {
+            assertThat(contentArr).contains("\"" + i + "\"");
+            assertThat(contentArr).contains("\"" + "STOCK_" + i + "\"");
+            assertThat(contentArr).contains("\"" + (100.0 + i * 10) + "\"");
         }
     }
 

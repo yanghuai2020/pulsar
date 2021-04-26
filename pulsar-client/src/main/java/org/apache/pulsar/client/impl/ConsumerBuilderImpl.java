@@ -119,35 +119,25 @@ public class ConsumerBuilderImpl<T> implements ConsumerBuilder<T> {
             return FutureUtil.failedFuture(
                     new InvalidConfigurationException("KeySharedPolicy must set with KeyShared subscription"));
         }
-        if (conf.isRetryEnable() && conf.getTopicNames().size() > 0 ) {
+        if(conf.isRetryEnable() && conf.getTopicNames().size() > 0 ) {
             TopicName topicFirst = TopicName.get(conf.getTopicNames().iterator().next());
             String retryLetterTopic = topicFirst.getNamespace() + "/" + conf.getSubscriptionName() + RetryMessageUtil.RETRY_GROUP_TOPIC_SUFFIX;
             String deadLetterTopic = topicFirst.getNamespace() + "/" + conf.getSubscriptionName() + RetryMessageUtil.DLQ_GROUP_TOPIC_SUFFIX;
             if(conf.getDeadLetterPolicy() == null) {
-                DeadLetterPolicy.DeadLetterPolicyBuilder dlpBuilder = DeadLetterPolicy.builder()
-                        .maxRedeliverCount(RetryMessageUtil.MAX_RECONSUMETIMES)
-                        .retryLetterTopic(retryLetterTopic);
-                // Don't set DLQ for key shared subType since it requires msg to be ordered for key.
-                if (conf.getSubscriptionType() != SubscriptionType.Key_Shared) {
-                    dlpBuilder.deadLetterTopic(deadLetterTopic);
-                }
-                conf.setDeadLetterPolicy(dlpBuilder.build());
+                conf.setDeadLetterPolicy(DeadLetterPolicy.builder()
+                                        .maxRedeliverCount(RetryMessageUtil.MAX_RECONSUMETIMES)
+                                        .retryLetterTopic(retryLetterTopic)
+                                        .deadLetterTopic(deadLetterTopic)
+                                        .build());
             } else {
                 if (StringUtils.isBlank(conf.getDeadLetterPolicy().getRetryLetterTopic())) {
                     conf.getDeadLetterPolicy().setRetryLetterTopic(retryLetterTopic);
                 }
-                if (StringUtils.isBlank(conf.getDeadLetterPolicy().getDeadLetterTopic())
-                        && conf.getSubscriptionType() != SubscriptionType.Key_Shared) {
+                if (StringUtils.isBlank(conf.getDeadLetterPolicy().getDeadLetterTopic())) {
                     conf.getDeadLetterPolicy().setDeadLetterTopic(deadLetterTopic);
                 }
             }
             conf.getTopicNames().add(conf.getDeadLetterPolicy().getRetryLetterTopic());
-        }
-        if (conf.getDeadLetterPolicy() != null && StringUtils.isNotBlank(conf.getDeadLetterPolicy().getDeadLetterTopic())
-                && conf.getSubscriptionType() == SubscriptionType.Key_Shared) {
-            return FutureUtil
-                    .failedFuture(new InvalidConfigurationException("DeadLetterQueue is not supported for" +
-                            " Key_Shared subscription type since DLQ can't guarantee message ordering."));
         }
         return interceptorList == null || interceptorList.size() == 0 ?
                 client.subscribeAsync(conf, schema, null) :
@@ -160,8 +150,8 @@ public class ConsumerBuilderImpl<T> implements ConsumerBuilder<T> {
                 "Passed in topicNames should not be null or empty.");
         Arrays.stream(topicNames).forEach(topicName ->
                 checkArgument(StringUtils.isNotBlank(topicName), "topicNames cannot have blank topic"));
-        conf.getTopicNames().addAll(Lists.newArrayList(Arrays.stream(topicNames).map(StringUtils::trim)
-                .collect(Collectors.toList())));
+        conf.getTopicNames().addAll(Arrays.stream(topicNames).map(StringUtils::trim)
+                .collect(Collectors.toList()));
         return this;
     }
 
@@ -310,7 +300,13 @@ public class ConsumerBuilderImpl<T> implements ConsumerBuilder<T> {
 
     @Override
     public ConsumerBuilder<T> maxPendingChuckedMessage(int maxPendingChuckedMessage) {
-        conf.setMaxPendingChuckedMessage(maxPendingChuckedMessage);
+        conf.setMaxPendingChunkedMessage(maxPendingChuckedMessage);
+        return this;
+    }
+
+    @Override
+    public ConsumerBuilder<T> maxPendingChunkedMessage(int maxPendingChunkedMessage) {
+        conf.setMaxPendingChunkedMessage(maxPendingChunkedMessage);
         return this;
     }
 
@@ -434,7 +430,7 @@ public class ConsumerBuilderImpl<T> implements ConsumerBuilder<T> {
 
     @Override
     public String toString() {
-        return conf != null ? conf.toString() : null;
+        return conf != null ? conf.toString() : "";
     }
 
     @Override
@@ -459,7 +455,12 @@ public class ConsumerBuilderImpl<T> implements ConsumerBuilder<T> {
     @Override
     public ConsumerBuilder<T> expireTimeOfIncompleteChunkedMessage(long duration, TimeUnit unit) {
         conf.setExpireTimeOfIncompleteChunkedMessageMillis(unit.toMillis(duration));
-        return null;
+        return this;
     }
 
+    @Override
+    public ConsumerBuilder<T> poolMessages(boolean poolMessages) {
+        conf.setPoolMessages(poolMessages);
+        return this;
+    }
 }

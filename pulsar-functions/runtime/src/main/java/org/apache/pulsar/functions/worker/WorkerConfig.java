@@ -397,7 +397,7 @@ public class WorkerConfig implements Serializable, PulsarConfiguration {
     private Properties properties = new Properties();
 
     public boolean getTlsEnabled() {
-    	return tlsEnabled || workerPortTls != null;
+    	return tlsEnabled && workerPortTls != null;
     }
 
     @FieldContext(
@@ -462,6 +462,11 @@ public class WorkerConfig implements Serializable, PulsarConfiguration {
             doc = "A set of the minimum amount of resources functions must request.  Support for this depends on function runtime."
     )
     private Resources functionInstanceMinResources;
+    @FieldContext(
+            category = CATEGORY_FUNC_RUNTIME_MNG,
+            doc = "A set of the maximum amount of resources functions may request.  Support for this depends on function runtime."
+    )
+    private Resources functionInstanceMaxResources;
 
     @FieldContext(
             category = CATEGORY_FUNC_RUNTIME_MNG,
@@ -569,6 +574,10 @@ public class WorkerConfig implements Serializable, PulsarConfiguration {
 
     public String getWorkerWebAddress() {
         return String.format("http://%s:%d", this.getWorkerHostname(), this.getWorkerPort());
+    }
+
+    public String getWorkerWebAddressTls() {
+        return String.format("https://%s:%d", this.getWorkerHostname(), this.getWorkerPortTls());
     }
 
     public static String unsafeLocalhostResolve() {

@@ -24,8 +24,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 import com.google.gson.Gson;
-
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
@@ -35,6 +33,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
@@ -92,6 +91,7 @@ import org.apache.pulsar.tests.integration.io.SourceTester;
 import org.apache.pulsar.tests.integration.topologies.FunctionRuntimeType;
 import org.apache.pulsar.tests.integration.topologies.PulsarCluster;
 import org.assertj.core.api.Assertions;
+import org.awaitility.Awaitility;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.shaded.com.google.common.collect.Sets;
 import org.testng.annotations.Test;
@@ -110,6 +110,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             .withMaxDuration(ONE_MINUTE)
             .withDelay(TEN_SECONDS)
             .onRetry(e -> log.error("Retry ... "));
+    private final AtomicInteger testId = new AtomicInteger(0);
 
     PulsarFunctionsTest(FunctionRuntimeType functionRuntimeType) {
         super(functionRuntimeType);
@@ -174,10 +175,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
     }
 
     private void testSink(SinkTester tester, boolean builtin) throws Exception {
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
         tester.startServiceContainer(pulsarCluster);
         try {
             runSinkTester(tester, builtin);
@@ -191,10 +188,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
                                                                         boolean builtinSink,
                                                                         SourceTester<ServiceContainerT> sourceTester)
             throws Exception {
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
         ServiceContainerT serviceContainer = sinkTester.startServiceContainer(pulsarCluster);
         try {
             runSinkTester(sinkTester, builtinSink);
@@ -568,10 +561,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             result.getStdout().contains("Deleted successfully"),
             result.getStdout()
         );
-        assertTrue(
-            result.getStderr().isEmpty(),
-            result.getStderr()
-        );
+        result.assertNoStderr();
     }
 
     protected void getSinkInfoNotFound(String tenant, String namespace, String sinkName) throws Exception {
@@ -841,10 +831,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             result.getStdout().contains("Delete source successfully"),
             result.getStdout()
         );
-        assertTrue(
-            result.getStderr().isEmpty(),
-            result.getStderr()
-        );
+        result.assertNoStderr();
     }
 
     protected void getSourceInfoNotFound(String tenant, String namespace, String sourceName) throws Exception {
@@ -886,10 +873,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             return;
         }
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         String inputTopicName = "persistent://public/default/test-function-local-run-" + runtime + "-input-" + randomName(8);
         String outputTopicName = "test-function-local-run-" + runtime + "-output-" + randomName(8);
@@ -900,7 +883,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         commandGenerator.setAdminUrl("pulsar://pulsar-broker-0:6650");
         commandGenerator.setSourceTopic(inputTopicName);
         commandGenerator.setSinkTopic(outputTopicName);
-        commandGenerator.setFunctionName("localRunTest");
+        commandGenerator.setFunctionName("localRunTest-" + randomName(8));
         commandGenerator.setRuntime(runtime);
         switch (runtime) {
             case JAVA:
@@ -1016,10 +999,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
 
         String inputTopicName = "test-" + type + "-count-window-" + functionRuntimeType + "-input-" + randomName(8);
         String outputTopicName = "test-" + type + "-count-window-" + functionRuntimeType + "-output-" + randomName(8);
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
         try (PulsarAdmin admin = PulsarAdmin.builder().serviceHttpUrl(pulsarCluster.getHttpServiceUrl()).build()) {
             admin.topics().createNonPartitionedTopic(inputTopicName);
             admin.topics().createNonPartitionedTopic(outputTopicName);
@@ -1178,10 +1157,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             return;
         }
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         Schema<?> schema;
         if (Runtime.JAVA == runtime) {
@@ -1375,10 +1350,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             schema = Schema.BYTES;
         }
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         String inputTopicName = "persistent://public/default/test-publish-" + runtime + "-input-" + randomName(8);
         String outputTopicName = "test-publish-" + runtime + "-output-" + randomName(8);
@@ -1502,10 +1473,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             return;
         }
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         String inputTopicName = "persistent://public/default/test-serde-java-input-" + randomName(8);
         String outputTopicName = "test-publish-serde-output-" + randomName(8);
@@ -1578,10 +1545,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             return;
         }
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         Schema<?> schema;
         if (Runtime.JAVA == runtime) {
@@ -1659,7 +1622,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
 
     }
 
-    private static void submitExclamationFunction(Runtime runtime,
+    private void submitExclamationFunction(Runtime runtime,
                                                   String inputTopicName,
                                                   String outputTopicName,
                                                   String functionName,
@@ -1678,7 +1641,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             schema);
     }
 
-    private static <T> void submitFunction(Runtime runtime,
+    private <T> void submitFunction(Runtime runtime,
                                            String inputTopicName,
                                            String outputTopicName,
                                            String functionName,
@@ -1706,7 +1669,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         submitFunction(runtime, inputTopicName, outputTopicName, functionName, file, functionClass, inputTopicSchema);
     }
 
-    private static <T> void submitFunction(Runtime runtime,
+    private <T> void submitFunction(Runtime runtime,
                                            String inputTopicName,
                                            String outputTopicName,
                                            String functionName,
@@ -1716,7 +1679,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         submitFunction(runtime, inputTopicName, outputTopicName, functionName, functionFile, functionClass, inputTopicSchema, null);
     }
 
-    private static <T> void submitFunction(Runtime runtime,
+    private <T> void submitFunction(Runtime runtime,
                                            String inputTopicName,
                                            String outputTopicName,
                                            String functionName,
@@ -1765,7 +1728,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         ensureSubscriptionCreated(inputTopicName, String.format("public/default/%s", functionName), inputTopicSchema);
     }
 
-    private static void updateFunctionParallelism(String functionName, int parallelism) throws Exception {
+    private void updateFunctionParallelism(String functionName, int parallelism) throws Exception {
 
         CommandGenerator generator = new CommandGenerator();
         generator.setFunctionName(functionName);
@@ -1781,7 +1744,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         assertTrue(result.getStdout().contains("\"Updated successfully\""));
     }
 
-    private static <T> void submitFunction(Runtime runtime,
+    private <T> void submitFunction(Runtime runtime,
                                            String inputTopicName,
                                            String outputTopicName,
                                            String functionName,
@@ -1824,7 +1787,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         assertTrue(result.getStdout().contains("\"Created successfully\""));
     }
 
-    private static <T> void ensureSubscriptionCreated(String inputTopicName,
+    private <T> void ensureSubscriptionCreated(String inputTopicName,
                                                       String subscriptionName,
                                                       Schema<T> inputTopicSchema)
             throws Exception {
@@ -1841,7 +1804,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         }
     }
 
-    private static void getFunctionInfoSuccess(String functionName) throws Exception {
+    private void getFunctionInfoSuccess(String functionName) throws Exception {
         ContainerExecResult result = pulsarCluster.getAnyWorker().execCmd(
             PulsarCluster.ADMIN_SCRIPT,
             "functions",
@@ -1855,7 +1818,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         assertTrue(result.getStdout().contains("\"name\": \"" + functionName + "\""));
     }
 
-    private static void getFunctionStatsEmpty(String functionName) throws Exception {
+    private void getFunctionStatsEmpty(String functionName) throws Exception {
         ContainerExecResult result = pulsarCluster.getAnyWorker().execCmd(
                 PulsarCluster.ADMIN_SCRIPT,
                 "functions",
@@ -1895,7 +1858,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         assertEquals(functionStats.instances.get(0).getMetrics().oneMin.getAvgProcessLatency(), null);
     }
 
-    private static void getFunctionStats(String functionName, int numMessages) throws Exception {
+    private void getFunctionStats(String functionName, int numMessages) throws Exception {
         ContainerExecResult result = pulsarCluster.getAnyWorker().execCmd(
                 PulsarCluster.ADMIN_SCRIPT,
                 "functions",
@@ -1935,7 +1898,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         assertTrue(functionStats.instances.get(0).getMetrics().oneMin.getAvgProcessLatency() > 0);
     }
 
-    private static void getFunctionInfoNotFound(String functionName) throws Exception {
+    private void getFunctionInfoNotFound(String functionName) throws Exception {
         retryStrategically(aVoid -> {
             try {
                 pulsarCluster.getAnyWorker().execCmd(
@@ -1957,7 +1920,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         }, 5, 100, true);
     }
 
-    private static void checkSubscriptionsCleanup(String topic) throws Exception {
+    private void checkSubscriptionsCleanup(String topic) throws Exception {
         try {
             ContainerExecResult result = pulsarCluster.getAnyBroker().execCmd(
                     PulsarCluster.ADMIN_SCRIPT,
@@ -1972,7 +1935,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         }
     }
 
-    private static void checkPublisherCleanup(String topic) throws Exception {
+    private void checkPublisherCleanup(String topic) throws Exception {
         try {
             ContainerExecResult result = pulsarCluster.getAnyBroker().execCmd(
                     PulsarCluster.ADMIN_SCRIPT,
@@ -1987,12 +1950,22 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         }
     }
 
-    private static void getFunctionStatus(String functionName, int numMessages, boolean checkRestarts) throws Exception {
+    private void getFunctionStatus(String functionName, int numMessages, boolean checkRestarts) throws Exception {
         getFunctionStatus(functionName, numMessages, checkRestarts, 1);
     }
 
-    private static void getFunctionStatus(String functionName, int numMessages, boolean checkRestarts, int parallelism)
+    private void getFunctionStatus(String functionName, int numMessages, boolean checkRestarts, int parallelism)
         throws Exception {
+        Awaitility.await()
+                .pollInterval(Duration.ofSeconds(1))
+                .atMost(Duration.ofSeconds(15))
+                .ignoreExceptions()
+                .untilAsserted(() ->
+                        doGetFunctionStatus(functionName, numMessages, checkRestarts, parallelism));
+    }
+
+    private void doGetFunctionStatus(String functionName, int numMessages, boolean checkRestarts, int parallelism)
+            throws Exception {
         ContainerExecResult result = pulsarCluster.getAnyWorker().execCmd(
             PulsarCluster.ADMIN_SCRIPT,
             "functions",
@@ -2035,7 +2008,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         assertEquals(totalMessagesSuccessfullyProcessed, numMessages);
     }
 
-    private static void publishAndConsumeMessages(String inputTopic,
+    private void publishAndConsumeMessages(String inputTopic,
                                                   String outputTopic,
                                                   int numMessages) throws Exception {
         @Cleanup PulsarClient client = PulsarClient.builder()
@@ -2087,7 +2060,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         }
     }
 
-    private static void publishAndConsumeMessagesBytes(String inputTopic,
+    private void publishAndConsumeMessagesBytes(String inputTopic,
                                                        String outputTopic,
                                                        int numMessages) throws Exception {
         @Cleanup PulsarClient client = PulsarClient.builder()
@@ -2140,7 +2113,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         }
     }
 
-    private static void deleteFunction(String functionName) throws Exception {
+    private void deleteFunction(String functionName) throws Exception {
         ContainerExecResult result = pulsarCluster.getAnyWorker().execCmd(
             PulsarCluster.ADMIN_SCRIPT,
             "functions",
@@ -2150,7 +2123,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             "--name", functionName
         );
         assertTrue(result.getStdout().contains("Deleted successfully"));
-        assertTrue(result.getStderr().isEmpty());
+        result.assertNoStderr();
     }
 
     @Test(groups = "function")
@@ -2160,10 +2133,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         String functionName = "test-autoschema-fn-" + randomName(8);
         final int numMessages = 10;
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         // submit the exclamation function
         submitFunction(
@@ -2194,7 +2163,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         getFunctionInfoNotFound(functionName);
     }
 
-    private static void publishAndConsumeAvroMessages(String inputTopic,
+    private void publishAndConsumeAvroMessages(String inputTopic,
                                                       String outputTopic,
                                                       int numMessages) throws Exception {
 
@@ -2228,14 +2197,8 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         log.info("testAvroSchemaFunction start ...");
         final String inputTopic = "test-avroschema-input-" + randomName(8);
         final String outputTopic = "test-avroschema-output-" + randomName(8);
-        final String functionName = "test-avroschema-fn-202003241756";
+        final String functionName = "test-avroschema-fn-" + randomName(8);
         final int numMessages = 10;
-
-        if (pulsarCluster == null) {
-            log.info("pulsarClient is null");
-            this.setupCluster();
-            this.setupFunctionWorkers();
-        }
 
         @Cleanup PulsarClient pulsarClient = PulsarClient.builder()
                 .serviceUrl(pulsarCluster.getPlainTextServiceUrl()).build();
@@ -2344,7 +2307,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
 
         final String tenant = TopicName.PUBLIC_TENANT;
         final String namespace = TopicName.DEFAULT_NAMESPACE;
-        final String outputTopicName = "debe-output-topic-name";
+        final String outputTopicName = "debe-output-topic-name-" + testId.getAndIncrement();
         boolean isJsonConverter = converterClassName.endsWith("JsonConverter");
         final String consumeTopicName = "debezium/mysql-"
                 + (isJsonConverter ? "json" : "avro")
@@ -2355,10 +2318,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         // This is the binlog count that contained in mysql container.
         final int numMessages = 47;
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         @Cleanup
         PulsarClient client = PulsarClient.builder()
@@ -2440,11 +2399,11 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         getSourceInfoNotFound(tenant, namespace, sourceName);
     }
 
-    private  void testDebeziumPostgreSqlConnect(String converterClassName, boolean jsonWithEnvelope) throws Exception {
+    private void testDebeziumPostgreSqlConnect(String converterClassName, boolean jsonWithEnvelope) throws Exception {
 
         final String tenant = TopicName.PUBLIC_TENANT;
         final String namespace = TopicName.DEFAULT_NAMESPACE;
-        final String outputTopicName = "debe-output-topic-name";
+        final String outputTopicName = "debe-output-topic-name-" + testId.getAndIncrement();
         final String consumeTopicName = "debezium/postgresql/dbserver1.inventory.products";
         final String sourceName = "test-source-debezium-postgersql-" + functionRuntimeType + "-" + randomName(8);
 
@@ -2452,10 +2411,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         // This is the binlog count that contained in postgresql container.
         final int numMessages = 26;
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         @Cleanup
         PulsarClient client = PulsarClient.builder()
@@ -2540,10 +2495,6 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         // This is the binlog count that contained in mongodb container.
         final int numMessages = 17;
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
 
         @Cleanup
         PulsarClient client = PulsarClient.builder()
@@ -2654,11 +2605,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
             return;
         }
 
-        if (pulsarCluster == null) {
-            super.setupCluster();
-            super.setupFunctionWorkers();
-        }
-        
+
         Schema<?> schema;
         if (Runtime.JAVA == runtime) {
             schema = Schema.STRING;
@@ -2707,7 +2654,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
 
     }
 
-    private static void submitJavaLoggingFunction(String inputTopicName,
+    private void submitJavaLoggingFunction(String inputTopicName,
                                                   String logTopicName,
                                                   String functionName,
                                                   Schema<?> schema) throws Exception {
@@ -2735,7 +2682,7 @@ public abstract class PulsarFunctionsTest extends PulsarFunctionsTestBase {
         ensureSubscriptionCreated(inputTopicName, String.format("public/default/%s", functionName), schema);
     }
 
-    private static void publishAndConsumeMessages(String inputTopic,
+    private void publishAndConsumeMessages(String inputTopic,
                                                   String outputTopic,
                                                   int numMessages,
                                                   String messagePostfix) throws Exception {

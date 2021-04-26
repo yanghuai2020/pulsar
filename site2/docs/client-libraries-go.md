@@ -8,7 +8,7 @@ sidebar_label: Go
 
 You can use Pulsar [Go client](https://github.com/apache/pulsar-client-go) to create Pulsar [producers](#producers), [consumers](#consumers), and [readers](#readers) in Go (aka Golang).
 
-> #### API docs available as well
+> **API docs available as well**  
 > For standard API docs, consult the [Godoc](https://godoc.org/github.com/apache/pulsar-client-go/pulsar).
 
 
@@ -36,6 +36,12 @@ Pulsar protocol URLs are assigned to specific clusters, use the `pulsar` scheme 
 
 ```http
 pulsar://localhost:6650
+```
+
+If you have multiple brokers, you can set the URL as below.
+
+```
+pulsar://localhost:6550,localhost:6651,localhost:6652
 ```
 
 A URL for a production Pulsar cluster may look something like this:
@@ -77,11 +83,34 @@ func main() {
 }
 ```
 
+If you have multiple brokers, you can initiate a client object as below.
+
+```
+import (
+    "log"
+    "time"
+    "github.com/apache/pulsar-client-go/pulsar"
+)
+
+func main() {
+    client, err := pulsar.NewClient(pulsar.ClientOptions{
+        URL: "pulsar://localhost:6650,localhost:6651,localhost:6652",
+        OperationTimeout:  30 * time.Second,
+        ConnectionTimeout: 30 * time.Second,
+    })
+    if err != nil {
+        log.Fatalf("Could not instantiate Pulsar client: %v", err)
+    }
+
+    defer client.Close()
+}
+```
+
 The following configurable parameters are available for Pulsar clients:
 
  Name | Description | Default
 | :-------- | :---------- |:---------- |
-| URL | Configure the service URL for the Pulsar service. This parameter is required | |
+| URL | Configure the service URL for the Pulsar service.<br><br>If you have multiple brokers, you can set multiple Pulsar cluster addresses for a client. <br><br>This parameter is **required**. |None |
 | ConnectionTimeout | Timeout for the establishment of a TCP connection | 30s |
 | OperationTimeout| Set the operation timeout. Producer-create, subscribe and unsubscribe operations will be retried until this interval, after which the operation will be marked as failed| 30s|
 | Authentication | Configure the authentication provider. Example: `Authentication: NewAuthenticationTLS("my-cert.pem", "my-key.pem")` | no authentication |
@@ -232,7 +261,7 @@ canc()
 | CompressionType | CompressionType set the compression type for the producer. | not compressed | 
 | MessageRouter | MessageRouter set a custom message routing policy by passing an implementation of MessageRouter | |
 | DisableBatching | DisableBatching control whether automatic batching of messages is enabled for the producer. | false |
-| BatchingMaxPublishDelay | BatchingMaxPublishDelay set the time period within which the messages sent will be batched | 10ms |
+| BatchingMaxPublishDelay | BatchingMaxPublishDelay set the time period within which the messages sent will be batched | 1ms |
 | BatchingMaxMessages | BatchingMaxMessages set the maximum number of messages permitted in a batch. | 1000 | 
 
 ## Consumers
@@ -673,7 +702,7 @@ oauth := pulsar.NewAuthenticationOAuth2(map[string]string{
 		"clientId":   "0Xx...Yyxeny",
 	})
 client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL:              "puslar://my-cluster:6650",
+		URL:              "pulsar://my-cluster:6650",
 		Authentication:   oauth,
 })
 ```
