@@ -103,18 +103,18 @@ flexible messaging model and an intuitive client API.</description>
     <!-- apache commons -->
     <commons-compress.version>1.19</commons-compress.version>
 
-    <bookkeeper.version>4.13.0</bookkeeper.version>
+    <bookkeeper.version>4.14.1</bookkeeper.version>
     <zookeeper.version>3.6.2</zookeeper.version>
     <snappy.version>1.1.7</snappy.version> <!-- ZooKeeper server -->
     <dropwizardmetrics.version>3.2.5</dropwizardmetrics.version> <!-- ZooKeeper server -->
     <curator.version>5.1.0</curator.version>
     <netty.version>4.1.63.Final</netty.version>
-    <netty-tc-native.version>2.0.38.Final</netty-tc-native.version>
+    <netty-tc-native.version>2.0.33.Final</netty-tc-native.version>
     <jetty.version>9.4.39.v20210325</jetty.version>
-    <jersey.version>2.31</jersey.version>
+    <conscrypt.version>2.5.2</conscrypt.version>
+    <jersey.version>2.34</jersey.version>
     <athenz.version>1.10.9</athenz.version>
     <prometheus.version>0.5.0</prometheus.version>
-    <aspectj.version>1.9.2</aspectj.version>
     <vertx.version>3.5.4</vertx.version>
     <rocksdb.version>6.10.2</rocksdb.version>
     <slf4j.version>1.7.25</slf4j.version>
@@ -122,8 +122,8 @@ flexible messaging model and an intuitive client API.</description>
     <log4j2.version>2.14.0</log4j2.version>
     <bouncycastle.version>1.68</bouncycastle.version>
     <bouncycastlefips.version>1.0.2</bouncycastlefips.version>
-    <jackson.version>2.11.1</jackson.version>
-    <jackson.databind.version>2.11.1</jackson.databind.version>
+    <jackson.version>2.12.3</jackson.version>
+    <jackson.databind.version>2.12.3</jackson.databind.version>
     <reflections.version>0.9.11</reflections.version>
     <swagger.version>1.6.2</swagger.version>
     <puppycrawl.checkstyle.version>8.37</puppycrawl.checkstyle.version>
@@ -143,7 +143,7 @@ flexible messaging model and an intuitive client API.</description>
     <rabbitmq-client.version>5.1.1</rabbitmq-client.version>
     <aws-sdk.version>1.11.774</aws-sdk.version>
     <avro.version>1.10.2</avro.version>
-    <joda.version>2.10.1</joda.version>
+    <joda.version>2.10.5</joda.version>
     <jclouds.version>2.3.0</jclouds.version>
     <sqlite-jdbc.version>3.8.11.2</sqlite-jdbc.version>
     <mysql-jdbc.version>8.0.11</mysql-jdbc.version>
@@ -186,6 +186,9 @@ flexible messaging model and an intuitive client API.</description>
     <javax.annotation-api.version>1.3.2</javax.annotation-api.version>
     <jaxb-api>2.3.1</jaxb-api>
     <javax.activation.version>1.2.0</javax.activation.version>
+    <jakarta.activation.version>1.2.2</jakarta.activation.version>
+    <jakarta.xml.bind.version>2.3.3</jakarta.xml.bind.version>
+    <jakarta.validation.version>2.0.2</jakarta.validation.version>
     <jna.version>4.2.0</jna.version>
     <kubernetesclient.version>12.0.0</kubernetesclient.version>
     <nsq-client.version>1.0</nsq-client.version>
@@ -214,7 +217,6 @@ flexible messaging model and an intuitive client API.</description>
     <!-- Plugin dependencies -->
     <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
     <exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
-    <aspectj-maven-plugin.version>1.11.1</aspectj-maven-plugin.version>
     <license-maven-plugin.version>4.0.rc2</license-maven-plugin.version>
     <directory-maven-plugin.version>0.3.1</directory-maven-plugin.version>
     <maven-enforcer-plugin.version>3.0.0-M3</maven-enforcer-plugin.version>
@@ -390,6 +392,12 @@ flexible messaging model and an intuitive client API.</description>
       </dependency>
 
       <dependency>
+        <groupId>org.apache.bookkeeper</groupId>
+        <artifactId>cpu-affinity</artifactId>
+        <version>${bookkeeper.version}</version>
+      </dependency>
+
+      <dependency>
         <groupId>io.vertx</groupId>
         <artifactId>vertx-core</artifactId>
         <version>${vertx.version}</version>
@@ -505,6 +513,18 @@ flexible messaging model and an intuitive client API.</description>
         <groupId>org.eclipse.jetty</groupId>
         <artifactId>jetty-server</artifactId>
         <version>${jetty.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.eclipse.jetty</groupId>
+        <artifactId>jetty-alpn-conscrypt-server</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.conscrypt</groupId>
+        <artifactId>conscrypt-openjdk-uber</artifactId>
+        <version>${conscrypt.version}</version>
       </dependency>
 
       <dependency>
@@ -665,6 +685,12 @@ flexible messaging model and an intuitive client API.</description>
         <groupId>org.glassfish.jersey.media</groupId>
         <artifactId>jersey-media-json-jackson</artifactId>
         <version>${jersey.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>jakarta.activation</groupId>
+            <artifactId>jakarta.activation-api</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
 
       <dependency>
@@ -850,18 +876,6 @@ flexible messaging model and an intuitive client API.</description>
       </dependency>
 
       <dependency>
-        <groupId>org.aspectj</groupId>
-        <artifactId>aspectjrt</artifactId>
-        <version>${aspectj.version}</version>
-      </dependency>
-
-      <dependency>
-        <groupId>org.aspectj</groupId>
-        <artifactId>aspectjweaver</artifactId>
-        <version>${aspectj.version}</version>
-      </dependency>
-
-      <dependency>
         <groupId>net.jodah</groupId>
         <artifactId>typetools</artifactId>
         <version>${typetools.version}</version>
@@ -1000,9 +1014,33 @@ flexible messaging model and an intuitive client API.</description>
       </dependency>
 
       <dependency>
+        <groupId>jakarta.xml.bind</groupId>
+        <artifactId>jakarta.xml.bind-api</artifactId>
+        <version>${jakarta.xml.bind.version}</version>
+      </dependency>
+
+      <dependency>
         <groupId>com.sun.activation</groupId>
         <artifactId>javax.activation</artifactId>
         <version>${javax.activation.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>com.sun.activation</groupId>
+        <artifactId>jakarta.activation</artifactId>
+        <version>${jakarta.activation.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>jakarta.activation</groupId>
+        <artifactId>jakarta.activation-api</artifactId>
+        <version>${jakarta.activation.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>jakarta.validation</groupId>
+        <artifactId>jakarta.validation-api</artifactId>
+        <version>${jakarta.validation.version}</version>
       </dependency>
 
       <dependency>
@@ -1132,6 +1170,11 @@ flexible messaging model and an intuitive client API.</description>
       <artifactId>lombok</artifactId>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>javax.annotation</groupId>
+      <artifactId>javax.annotation-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
 
     <dependency>
       <!-- We use MockedBookKeeper in many unit tests -->
@@ -1158,6 +1201,11 @@ flexible messaging model and an intuitive client API.</description>
           <artifactId>*</artifactId>
         </exclusion>
       </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.zookeeper</groupId>
+      <artifactId>zookeeper-prometheus-metrics</artifactId>
+      <version>${zookeeper.version}</version>
     </dependency>
   </dependencies>
 
@@ -1822,8 +1870,13 @@ flexible messaging model and an intuitive client API.</description>
     <profile>
       <id>main</id>
       <activation>
-        <activeByDefault>true</activeByDefault>
-        <jdk>[8,)</jdk>
+        <!-- always activate this profile by default. Use "-main" or "!main" in the "-P" parameter to exclude it -->
+        <!-- for example use "-Pcore-modules,-main" to activate the core-modules profile -->
+        <property>
+          <name>disableMainProfile</name>
+          <!-- always active unless true is passed as a value -->
+          <value>!true</value>
+        </property>
       </activation>
       <modules>
         <module>buildtools</module>
@@ -1851,7 +1904,6 @@ flexible messaging model and an intuitive client API.</description>
         <module>pulsar-testclient</module>
         <module>pulsar-broker-auth-athenz</module>
         <module>pulsar-client-auth-athenz</module>
-        <module>pulsar-zookeeper</module>
         <module>pulsar-sql</module>
         <module>dashboard</module>
         <module>pulsar-broker-auth-sasl</module>
@@ -1913,7 +1965,6 @@ flexible messaging model and an intuitive client API.</description>
         <module>pulsar-discovery-service</module>
         <module>pulsar-zookeeper-utils</module>
         <module>pulsar-testclient</module>
-        <module>pulsar-zookeeper</module>
         <module>pulsar-broker-auth-sasl</module>
         <module>pulsar-client-auth-sasl</module>
         <module>pulsar-config-validation</module>
@@ -2030,13 +2081,6 @@ flexible messaging model and an intuitive client API.</description>
     </profile>
     <profile>
       <id>errorprone-jdk11</id>
-      <dependencies>
-        <!-- required on JDK9+ when there is "lombok.addJavaxGeneratedAnnotation = true" in lombok.config -->
-        <dependency>
-          <groupId>javax.annotation</groupId>
-          <artifactId>javax.annotation-api</artifactId>
-        </dependency>
-      </dependencies>
       <properties>
         <!-- pass the additional properties to -Xplugin:ErrorProne argument defined in errorprone profile -->
         <!-- change configuration of slf4j checks to be more permissive -->

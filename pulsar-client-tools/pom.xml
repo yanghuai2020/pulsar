@@ -40,6 +40,11 @@
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
+      <artifactId>pulsar-client-admin-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
       <artifactId>pulsar-client-admin-original</artifactId>
       <version>${project.version}</version>
       <exclusions>
@@ -85,6 +90,12 @@
       <scope>test</scope>
     </dependency>
 
+    <dependency>
+    	<groupId>org.apache.pulsar</groupId>
+    	<artifactId>pulsar-io-batch-discovery-triggerers</artifactId>
+    	<version>${project.version}</version>
+    	<scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

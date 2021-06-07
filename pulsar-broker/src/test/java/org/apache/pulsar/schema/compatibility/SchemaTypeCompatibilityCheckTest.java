@@ -20,7 +20,9 @@ package org.apache.pulsar.schema.compatibility;
 
 import com.google.common.collect.Sets;
 import org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest;
+import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.ConsumerBuilder;
+import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerBuilder;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Schema;
@@ -28,8 +30,10 @@ import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
+import org.apache.pulsar.common.policies.data.ClusterDataImpl;
 import org.apache.pulsar.common.policies.data.SchemaCompatibilityStrategy;
 import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.pulsar.common.policies.data.TenantInfoImpl;
 import org.apache.pulsar.common.schema.SchemaInfo;
 import org.apache.pulsar.schema.Schemas;
 import org.testng.annotations.AfterClass;
@@ -58,10 +62,11 @@ public class SchemaTypeCompatibilityCheckTest extends MockedPulsarServiceBaseTes
         super.internalSetup();
 
         // Setup namespaces
-        admin.clusters().createCluster(CLUSTER_NAME, new ClusterData(pulsar.getBrokerServiceUrl()));
+        admin.clusters().createCluster(CLUSTER_NAME, ClusterData.builder().serviceUrl(pulsar.getWebServiceAddress()).build());
 
-        TenantInfo tenantInfo = new TenantInfo();
-        tenantInfo.setAllowedClusters(Collections.singleton(CLUSTER_NAME));
+        TenantInfo tenantInfo = TenantInfo.builder()
+                .allowedClusters(Collections.singleton(CLUSTER_NAME))
+                .build();
         admin.tenants().createTenant(PUBLIC_TENANT, tenantInfo);
         admin.namespaces().createNamespace(namespaceName, Sets.newHashSet(CLUSTER_NAME));
 
@@ -313,17 +318,34 @@ public class SchemaTypeCompatibilityCheckTest extends MockedPulsarServiceBaseTes
         };
 
         for (Schema<?> schema : schemas) {
-            pulsarClient.newProducer(schema)
+            Producer<?> p = pulsarClient.newProducer(schema)
                     .topic(topicName)
                     .create();
+            p.close();
         }
 
         for (Schema<?> schema : schemas) {
-            pulsarClient.newConsumer(schema)
+            Consumer<?> c = pulsarClient.newConsumer(schema)
                     .topic(topicName)
                     .subscriptionName(UUID.randomUUID().toString())
                     .subscribe();
+            c.close();
         }
+
+        List<SchemaInfo> schemasOfTopic = admin.schemas().getAllSchemas(topicName);
+
+        // bytes[] schema and bytebuffer schema does not upload schema info to the schema registry
+        assertEquals(schemasOfTopic.size(), schemas.length - 2);
+
+        // Try to upload the schema again.
+        for (Schema<?> schema : schemas) {
+            Producer<?> p = pulsarClient.newProducer(schema)
+                    .topic(topicName)
+                    .create();
+            p.close();
+        }
+
+        assertEquals(schemasOfTopic.size(), schemas.length - 2);
     }
 
 }

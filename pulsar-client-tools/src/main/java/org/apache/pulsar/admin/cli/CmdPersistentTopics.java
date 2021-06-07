@@ -60,6 +60,7 @@ public class CmdPersistentTopics extends CmdBase {
         jcommander.addCommand("bundle-range", new GetBundleRange());
         jcommander.addCommand("delete", new DeleteCmd());
         jcommander.addCommand("unload", new UnloadCmd());
+        jcommander.addCommand("truncate", new TruncateCmd());
         jcommander.addCommand("subscriptions", new ListSubscriptions());
         jcommander.addCommand("unsubscribe", new DeleteSubscription());
         jcommander.addCommand("create-subscription", new CreateSubscription());
@@ -286,6 +287,19 @@ public class CmdPersistentTopics extends CmdBase {
         }
     }
 
+    @Parameters(commandDescription = "Truncate a topic. \n"
+            + "\t\tThe truncate operation will move all cursors to the end of the topic and delete all inactive ledgers. ")
+    private class TruncateCmd extends CliCommand {
+        @Parameter(description = "persistent://tenant/namespace/topic\n", required = true)
+        private java.util.List<String> params;
+
+        @Override
+        void run() throws PulsarAdminException {
+            String topic = validateTopicName(params);
+            getPersistentTopics().truncate(topic);
+        }
+    }
+
     @Parameters(commandDescription = "Get the list of subscriptions on the topic")
     private class ListSubscriptions extends CliCommand {
         @Parameter(description = "persistent://property/cluster/namespace/topic", required = true)
@@ -355,7 +369,7 @@ public class CmdPersistentTopics extends CmdBase {
         @Override
         void run() throws PulsarAdminException {
             String persistentTopic = validatePersistentTopic(params);
-            JsonObject result = getPersistentTopics().getInternalInfo(persistentTopic);
+            String result = getPersistentTopics().getInternalInfo(persistentTopic);
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             System.out.println(gson.toJson(result));
         }

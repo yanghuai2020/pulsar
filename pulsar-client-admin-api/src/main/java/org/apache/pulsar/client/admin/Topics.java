@@ -18,7 +18,6 @@
  */
 package org.apache.pulsar.client.admin;
 
-import com.google.gson.JsonObject;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -921,7 +920,7 @@ public interface Topics {
      * @throws PulsarAdminException
      *             Unexpected error
      */
-    JsonObject getInternalInfo(String topic) throws PulsarAdminException;
+    String getInternalInfo(String topic) throws PulsarAdminException;
 
     /**
      * Get a JSON representation of the topic metadata stored in ZooKeeper.
@@ -936,7 +935,7 @@ public interface Topics {
      * @throws PulsarAdminException
      *             Unexpected error
      */
-    CompletableFuture<JsonObject> getInternalInfoAsync(String topic);
+    CompletableFuture<String> getInternalInfoAsync(String topic);
 
     /**
      * Get the stats for the partitioned topic
@@ -3275,4 +3274,31 @@ public interface Topics {
      */
     CompletableFuture<Message<byte[]>> examineMessageAsync(String topic, String initialPosition, long messagePosition)
             throws PulsarAdminException;
+
+    /**
+     * Truncate a topic.
+     * <p/>
+     *
+     * @param topic
+     *            topic name
+     *
+     * @throws NotAuthorizedException
+     *             Don't have admin permission
+     * @throws PulsarAdminException
+     *             Unexpected error
+     */
+    void truncate(String topic) throws PulsarAdminException;
+
+    /**
+     * Truncate a topic asynchronously.
+     * <p/>
+     * The latest ledger cannot be deleted.
+     * <p/>
+     *
+     * @param topic
+     *            topic name
+     *
+     * @return a future that can be used to track when the topic is truncated
+     */
+    CompletableFuture<Void> truncateAsync(String topic);
 }

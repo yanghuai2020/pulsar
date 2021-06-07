@@ -24,6 +24,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 
 import com.google.common.collect.Sets;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import lombok.Cleanup;
@@ -32,6 +36,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.pulsar.broker.intercept.MockBrokerInterceptor;
@@ -45,11 +50,13 @@ import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.transaction.TransactionBufferClient;
 import org.apache.pulsar.client.api.transaction.TransactionBufferClientException;
 import org.apache.pulsar.client.api.transaction.TxnID;
+import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.api.proto.TxnAction;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.pulsar.common.policies.data.ClusterDataImpl;
+import org.apache.pulsar.common.policies.data.TenantInfoImpl;
 import org.apache.pulsar.common.util.collections.ConcurrentOpenHashMap;
 import org.awaitility.Awaitility;
 import org.mockito.Mockito;
@@ -75,10 +82,12 @@ public class TransactionBufferClientTest extends TransactionMetaStoreTestBase {
     BrokerService[] brokerServices;
     private final static String namespace = "public/test";
 
+    private EventLoopGroup eventLoopGroup;
+
     @Override
     protected void afterSetup() throws Exception {
-        pulsarAdmins[0].clusters().createCluster("my-cluster", new ClusterData(pulsarServices[0].getWebServiceAddress()));
-        pulsarAdmins[0].tenants().createTenant("public", new TenantInfo(Sets.newHashSet(), Sets.newHashSet("my-cluster")));
+        pulsarAdmins[0].clusters().createCluster("my-cluster", ClusterData.builder().serviceUrl(pulsarServices[0].getWebServiceAddress()).build());
+        pulsarAdmins[0].tenants().createTenant("public", new TenantInfoImpl(Sets.newHashSet(), Sets.newHashSet("my-cluster")));
         pulsarAdmins[0].namespaces().createNamespace(namespace, 10);
         pulsarAdmins[0].topics().createPartitionedTopic(partitionedTopicName.getPartitionedTopicName(), partitions);
         pulsarClient.newConsumer()
@@ -101,10 +110,12 @@ public class TransactionBufferClientTest extends TransactionMetaStoreTestBase {
             brokerServices = null;
         }
         super.cleanup();
+        eventLoopGroup.shutdownGracefully().get();
     }
 
     @Override
     protected void afterPulsarStart() throws Exception {
+        eventLoopGroup = new NioEventLoopGroup();
         brokerServices = new BrokerService[pulsarServices.length];
         AtomicLong atomicLong = new AtomicLong(0);
         for (int i = 0; i < pulsarServices.length; i++) {
@@ -123,7 +134,7 @@ public class TransactionBufferClientTest extends TransactionMetaStoreTestBase {
             Mockito.when(topicMap.get(Mockito.anyString())).thenReturn(
                     CompletableFuture.completedFuture(Optional.of(mockTopic)));
 
-            BrokerService brokerService = Mockito.spy(new BrokerService(pulsarServices[i]));
+            BrokerService brokerService = Mockito.spy(new BrokerService(pulsarServices[i], eventLoopGroup));
             doReturn(new MockBrokerInterceptor()).when(brokerService).getInterceptor();
             doReturn(atomicLong.getAndIncrement() + "").when(brokerService).generateUniqueProducerName();
             brokerServices[i] = brokerService;
@@ -224,12 +235,22 @@ public class TransactionBufferClientTest extends TransactionMetaStoreTestBase {
     @Test
     public void testTransactionBufferClientTimeout() throws Exception {
         PulsarClientImpl mockClient = mock(PulsarClientImpl.class);
-        when(mockClient.getConnection(anyString())).thenReturn(new CompletableFuture<>());
+        CompletableFuture<ClientCnx> completableFuture = new CompletableFuture<>();
+        ClientCnx clientCnx = mock(ClientCnx.class);
+        completableFuture.complete(clientCnx);
+        when(mockClient.getConnection(anyString())).thenReturn(completableFuture);
+        ChannelHandlerContext cnx = mock(ChannelHandlerContext.class);
+        when(clientCnx.ctx()).thenReturn(cnx);
+        Channel channel = mock(Channel.class);
+        when(cnx.channel()).thenReturn(channel);
+
+        when(channel.isActive()).thenReturn(true);
+
         @Cleanup("stop")
         HashedWheelTimer hashedWheelTimer = new HashedWheelTimer();
         TransactionBufferHandlerImpl transactionBufferHandler =
                 new TransactionBufferHandlerImpl(mockClient, hashedWheelTimer);
-        CompletableFuture<TxnID> completableFuture =
+        CompletableFuture<TxnID> endFuture =
                 transactionBufferHandler.endTxnOnTopic("test", 1, 1, TxnAction.ABORT, 1);
 
         Field field = TransactionBufferHandlerImpl.class.getDeclaredField("pendingRequests");
@@ -247,7 +268,42 @@ public class TransactionBufferClientTest extends TransactionMetaStoreTestBase {
         });
 
         try {
-            completableFuture.get();
+            endFuture.get();
+            fail();
+        } catch (Exception e) {
+            assertTrue(e.getCause() instanceof TransactionBufferClientException.RequestTimeoutException);
+        }
+    }
+
+    @Test
+    public void testTransactionBufferChannelUnActive() {
+        PulsarClientImpl mockClient = mock(PulsarClientImpl.class);
+        CompletableFuture<ClientCnx> completableFuture = new CompletableFuture<>();
+        ClientCnx clientCnx = mock(ClientCnx.class);
+        completableFuture.complete(clientCnx);
+        when(mockClient.getConnection(anyString())).thenReturn(completableFuture);
+        ChannelHandlerContext cnx = mock(ChannelHandlerContext.class);
+        when(clientCnx.ctx()).thenReturn(cnx);
+        Channel channel = mock(Channel.class);
+        when(cnx.channel()).thenReturn(channel);
+
+        when(channel.isActive()).thenReturn(false);
+
+        @Cleanup("stop")
+        HashedWheelTimer hashedWheelTimer = new HashedWheelTimer();
+        TransactionBufferHandlerImpl transactionBufferHandler =
+                new TransactionBufferHandlerImpl(mockClient, hashedWheelTimer);
+        try {
+            transactionBufferHandler.endTxnOnTopic("test", 1, 1, TxnAction.ABORT, 1).get();
+            fail();
+        } catch (Exception e) {
+            assertTrue(e.getCause() instanceof PulsarClientException.LookupException);
+        }
+
+        when(channel.isActive()).thenReturn(true);
+
+        try {
+            transactionBufferHandler.endTxnOnTopic("test", 1, 1, TxnAction.ABORT, 1).get();
             fail();
         } catch (Exception e) {
             assertTrue(e.getCause() instanceof TransactionBufferClientException.RequestTimeoutException);
@@ -260,6 +316,24 @@ public class TransactionBufferClientTest extends TransactionMetaStoreTestBase {
         tbClient.abortTxnOnSubscription(topic + "_abort_sub", "test", 1L, 1L, -1L).get();
         tbClient.commitTxnOnSubscription(topic + "_commit_sub", "test", 1L, 1L, -1L).get();
         tbClient.abortTxnOnTopic(topic + "_abort_topic", 1L, 1L, -1L).get();
+        tbClient.commitTxnOnTopic(topic + "_commit_topic", 1L, 1L, -1L).get();
+    }
+
+    @Test
+    public void testTransactionBufferHandlerSemaphore() throws Exception {
+
+        Field field = TransactionBufferClientImpl.class.getDeclaredField("tbHandler");
+        field.setAccessible(true);
+        TransactionBufferHandlerImpl transactionBufferHandler = (TransactionBufferHandlerImpl) field.get(tbClient);
+
+        field = TransactionBufferHandlerImpl.class.getDeclaredField("semaphore");
+        field.setAccessible(true);
+        field.set(transactionBufferHandler, new Semaphore(2));
+
+        String topic = "persistent://" + namespace + "/testTransactionBufferLookUp";
+        tbClient.abortTxnOnSubscription(topic + "_abort_sub", "test", 1L, 1L, -1L).get();
+        tbClient.abortTxnOnTopic(topic + "_abort_topic", 1L, 1L, -1L).get();
+        tbClient.commitTxnOnSubscription(topic + "_commit_sub", "test", 1L, 1L, -1L).get();
         tbClient.commitTxnOnTopic(topic + "_commit_topic", 1L, 1L, -1L).get();
     }
 }

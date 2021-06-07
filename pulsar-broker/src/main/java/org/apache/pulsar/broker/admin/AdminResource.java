@@ -42,24 +42,23 @@ import org.apache.pulsar.broker.cache.LocalZooKeeperCacheService;
 import org.apache.pulsar.broker.service.BrokerServiceException;
 import org.apache.pulsar.broker.web.PulsarWebResource;
 import org.apache.pulsar.broker.web.RestException;
-import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.common.api.proto.CommandGetTopicsOfNamespace;
 import org.apache.pulsar.common.naming.Constants;
 import org.apache.pulsar.common.naming.NamespaceBundle;
-import org.apache.pulsar.common.naming.NamespaceBundleFactory;
-import org.apache.pulsar.common.naming.NamespaceBundles;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.BacklogQuota;
 import org.apache.pulsar.common.policies.data.BundlesData;
-import org.apache.pulsar.common.policies.data.DispatchRate;
+import org.apache.pulsar.common.policies.data.NamespaceOperation;
 import org.apache.pulsar.common.policies.data.PersistencePolicies;
 import org.apache.pulsar.common.policies.data.Policies;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.SubscribeRate;
+import org.apache.pulsar.common.policies.data.TopicOperation;
 import org.apache.pulsar.common.policies.data.TopicPolicies;
+import org.apache.pulsar.common.policies.data.impl.DispatchRateImpl;
 import org.apache.pulsar.common.util.Codec;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
@@ -124,13 +123,6 @@ public abstract class AdminResource extends PulsarWebResource {
     @Override
     protected void validateAdminAccessForTenant(String property) {
         super.validateAdminAccessForTenant(property);
-    }
-
-    // This is a stub method for Mockito
-    @Override
-    protected void validateNamespaceOwnershipWithBundles(String property, String cluster, String namespace,
-            boolean authoritative, boolean readOnly, BundlesData bundleData) {
-        super.validateNamespaceOwnershipWithBundles(property, cluster, namespace, authoritative, readOnly, bundleData);
     }
 
     // This is a stub method for Mockito
@@ -294,26 +286,6 @@ public abstract class AdminResource extends PulsarWebResource {
         }
     }
 
-    protected void validateTopicExistedAndCheckAllowAutoCreation(String tenant, String namespace,
-                                                                 String encodedTopic, boolean checkAllowAutoCreation) {
-        try {
-            PartitionedTopicMetadata partitionedTopicMetadata =
-                    pulsar().getBrokerService().fetchPartitionedTopicMetadataAsync(topicName).get();
-            if (partitionedTopicMetadata.partitions < 1) {
-                if (!pulsar().getNamespaceService().checkTopicExists(topicName).get()
-                        && checkAllowAutoCreation
-                        && !pulsar().getBrokerService().isAllowAutoTopicCreation(topicName)) {
-                    throw new RestException(Status.NOT_FOUND,
-                            new PulsarClientException.NotFoundException("Topic not exist"));
-                }
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            log.error("Failed to validate topic existed {}://{}/{}/{}",
-                    domain(), tenant, namespace, topicName, e);
-            throw new RestException(Status.INTERNAL_SERVER_ERROR, "Check topic partition meta failed.");
-        }
-    }
-
     @Deprecated
     protected void validateTopicName(String property, String cluster, String namespace, String encodedTopic) {
         String topic = Codec.decode(encodedTopic);
@@ -334,9 +306,8 @@ public abstract class AdminResource extends PulsarWebResource {
             Policies policies = namespaceResources().get(policyPath)
                     .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace does not exist"));
             // fetch bundles from LocalZK-policies
-            NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory()
-                    .getBundles(namespaceName);
-            BundlesData bundleData = NamespaceBundleFactory.getBundlesData(bundles);
+            BundlesData bundleData = pulsar().getNamespaceService().getNamespaceBundleFactory()
+                    .getBundles(namespaceName).getBundlesData();
             policies.bundles = bundleData != null ? bundleData : policies.bundles;
 
             return policies;
@@ -362,7 +333,7 @@ public abstract class AdminResource extends PulsarWebResource {
                         .thenCompose(bundles -> {
                     BundlesData bundleData = null;
                     try {
-                        bundleData = NamespaceBundleFactory.getBundlesData(bundles);
+                        bundleData = bundles.getBundlesData();
                     } catch (Exception e) {
                         log.error("[{}] Failed to get namespace policies {}", clientAppId(), namespaceName, e);
                         return FutureUtil.failedFuture(new RestException(e));
@@ -407,14 +378,17 @@ public abstract class AdminResource extends PulsarWebResource {
     }
 
     protected boolean checkBacklogQuota(BacklogQuota quota, RetentionPolicies retention) {
-        if (retention == null || retention.getRetentionSizeInMB() == 0
-                || retention.getRetentionSizeInMB() == -1) {
+        if (retention == null || retention.getRetentionSizeInMB() <= 0 || retention.getRetentionTimeInMinutes() <= 0) {
             return true;
         }
         if (quota == null) {
             quota = pulsar().getBrokerService().getBacklogQuotaManager().getDefaultQuota();
         }
         if (quota.getLimitSize() >= (retention.getRetentionSizeInMB() * 1024 * 1024)) {
+            return false;
+        }
+        // time based quota is in second
+        if (quota.getLimitTime() >= (retention.getRetentionTimeInMinutes() * 60)) {
             return false;
         }
         return true;
@@ -427,28 +401,28 @@ public abstract class AdminResource extends PulsarWebResource {
         }
     }
 
-    protected DispatchRate dispatchRate() {
-        return new DispatchRate(
-                pulsar().getConfiguration().getDispatchThrottlingRatePerTopicInMsg(),
-                pulsar().getConfiguration().getDispatchThrottlingRatePerTopicInByte(),
-                1
-        );
+    protected DispatchRateImpl dispatchRate() {
+        return DispatchRateImpl.builder()
+                .dispatchThrottlingRateInMsg(config().getDispatchThrottlingRatePerTopicInMsg())
+                .dispatchThrottlingRateInByte(config().getDispatchThrottlingRatePerTopicInByte())
+                .ratePeriodInSecond(1)
+                .build();
     }
 
-    protected DispatchRate subscriptionDispatchRate() {
-        return new DispatchRate(
-                pulsar().getConfiguration().getDispatchThrottlingRatePerSubscriptionInMsg(),
-                pulsar().getConfiguration().getDispatchThrottlingRatePerSubscriptionInByte(),
-                1
-        );
+    protected DispatchRateImpl subscriptionDispatchRate() {
+        return DispatchRateImpl.builder()
+                .dispatchThrottlingRateInMsg(config().getDispatchThrottlingRatePerSubscriptionInMsg())
+                .dispatchThrottlingRateInByte(config().getDispatchThrottlingRatePerSubscriptionInByte())
+                .ratePeriodInSecond(1)
+                .build();
     }
 
-    protected DispatchRate replicatorDispatchRate() {
-        return new DispatchRate(
-                pulsar().getConfiguration().getDispatchThrottlingRatePerReplicatorInMsg(),
-                pulsar().getConfiguration().getDispatchThrottlingRatePerReplicatorInByte(),
-                1
-        );
+    protected DispatchRateImpl replicatorDispatchRate() {
+        return DispatchRateImpl.builder()
+                .dispatchThrottlingRateInMsg(config().getDispatchThrottlingRatePerReplicatorInMsg())
+                .dispatchThrottlingRateInByte(config().getDispatchThrottlingRatePerReplicatorInByte())
+                .ratePeriodInSecond(1)
+                .build();
     }
 
     protected SubscribeRate subscribeRate() {
@@ -481,34 +455,25 @@ public abstract class AdminResource extends PulsarWebResource {
             TopicName topicName, boolean authoritative, boolean checkAllowAutoCreation) {
         try {
             validateClusterOwnership(topicName.getCluster());
-            // validates global-namespace contains local/peer cluster: if peer/local cluster present then lookup can
-            // serve/redirect request else fail partitioned-metadata-request so, client fails while creating
-            // producer/consumer
-            validateGlobalNamespaceOwnership(topicName.getNamespaceObject());
         } catch (Exception e) {
             return FutureUtil.failedFuture(e);
         }
 
-        try {
-            checkConnect(topicName);
-        } catch (WebApplicationException e) {
-            try {
-                validateAdminAccessForTenant(topicName.getTenant());
-            } catch (Exception ex) {
-                return FutureUtil.failedFuture(ex);
-            }
-        } catch (Exception e) {
-            // unknown error marked as internal server error
-            log.warn("Unexpected error while authorizing lookup. topic={}, role={}. Error: {}", topicName,
-                    clientAppId(), e.getMessage(), e);
-            return FutureUtil.failedFuture(e);
-        }
-
-        if (checkAllowAutoCreation) {
-            return pulsar().getBrokerService().fetchPartitionedTopicMetadataCheckAllowAutoCreationAsync(topicName);
-        } else {
-            return pulsar().getBrokerService().fetchPartitionedTopicMetadataAsync(topicName);
-        }
+        // validates global-namespace contains local/peer cluster: if peer/local cluster present then lookup can
+        // serve/redirect request else fail partitioned-metadata-request so, client fails while creating
+        // producer/consumer
+        return validateGlobalNamespaceOwnershipAsync(topicName.getNamespaceObject())
+                .thenRun(() -> {
+                    validateTopicOperation(topicName, TopicOperation.LOOKUP);
+                })
+                .thenCompose(__ -> {
+                    if (checkAllowAutoCreation) {
+                        return pulsar().getBrokerService()
+                                .fetchPartitionedTopicMetadataCheckAllowAutoCreationAsync(topicName);
+                    } else {
+                        return pulsar().getBrokerService().fetchPartitionedTopicMetadataAsync(topicName);
+                    }
+                });
     }
 
     protected PartitionedTopicMetadata getPartitionedTopicMetadata(TopicName topicName,
@@ -520,9 +485,7 @@ public abstract class AdminResource extends PulsarWebResource {
         validateGlobalNamespaceOwnership(topicName.getNamespaceObject());
 
         try {
-            checkConnect(topicName);
-        } catch (WebApplicationException e) {
-            validateAdminAccessForTenant(topicName.getTenant());
+            validateTopicOperation(topicName, TopicOperation.LOOKUP);
         } catch (Exception e) {
             // unknown error marked as internal server error
             log.warn("Unexpected error while authorizing lookup. topic={}, role={}. Error: {}", topicName,
@@ -583,9 +546,8 @@ public abstract class AdminResource extends PulsarWebResource {
             Policies policies = namespaceResources().get(AdminResource.path(POLICIES, property, cluster, namespace))
                     .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace does not exist"));
             // fetch bundles from LocalZK-policies
-            NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory()
-                    .getBundles(NamespaceName.get(property, cluster, namespace));
-            BundlesData bundleData = NamespaceBundleFactory.getBundlesData(bundles);
+            BundlesData bundleData  = pulsar().getNamespaceService().getNamespaceBundleFactory()
+                    .getBundles(NamespaceName.get(property, cluster, namespace)).getBundlesData();
             policies.bundles = bundleData != null ? bundleData : policies.bundles;
             return policies;
         } catch (RestException re) {
@@ -694,7 +656,7 @@ public abstract class AdminResource extends PulsarWebResource {
 
         final int maxPartitions = pulsar().getConfig().getMaxNumPartitionsPerPartitionedTopic();
         try {
-            validateAdminAccessForTenant(topicName.getTenant());
+            validateNamespaceOperation(topicName.getNamespaceObject(), NamespaceOperation.CREATE_TOPIC);
         } catch (Exception e) {
             log.error("[{}] Failed to create partitioned topic {}", clientAppId(), topicName, e);
             resumeAsyncResponseExceptionally(asyncResponse, e);

@@ -33,10 +33,10 @@ import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.pulsar.common.policies.data.ClusterDataImpl;
+import org.apache.pulsar.common.policies.data.TenantInfoImpl;
 import org.apache.pulsar.common.policies.data.TopicStats;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.pulsar.common.policies.data.stats.TopicStatsImpl;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -192,11 +192,11 @@ public class ResourceGroupUsageAggregationTest extends ProducerConsumerBase {
                             boolean checkProduce, boolean checkConsume)
                                                                 throws InterruptedException, PulsarAdminException {
         BrokerService bs = pulsar.getBrokerService();
-        Map<String, TopicStats> topicStatsMap = bs.getTopicStats();
-        for (Map.Entry<String, TopicStats> entry : topicStatsMap.entrySet()) {
+        Map<String, TopicStatsImpl> topicStatsMap = bs.getTopicStats();
+        for (Map.Entry<String, TopicStatsImpl> entry : topicStatsMap.entrySet()) {
             String mapTopicName = entry.getKey();
             if (mapTopicName.equals(topicString)) {
-                TopicStats stats = entry.getValue();
+                TopicStatsImpl stats = entry.getValue();
                 if (checkProduce) {
                     Assert.assertTrue(stats.bytesInCounter >= sentNumBytes);
                     Assert.assertTrue(stats.msgInCounter == sentNumMsgs);
@@ -251,9 +251,9 @@ public class ResourceGroupUsageAggregationTest extends ProducerConsumerBase {
         this.conf.setAllowAutoTopicCreation(true);
 
         final String clusterName = "test";
-        admin.clusters().createCluster(clusterName, new ClusterData(pulsar.getBrokerServiceUrl()));
+        admin.clusters().createCluster(clusterName, ClusterData.builder().serviceUrl(brokerUrl.toString()).build());
             admin.tenants().createTenant(TenantName,
-                    new TenantInfo(Sets.newHashSet("fakeAdminRole"), Sets.newHashSet(clusterName)));
+                    new TenantInfoImpl(Sets.newHashSet("fakeAdminRole"), Sets.newHashSet(clusterName)));
         admin.namespaces().createNamespace(TenantAndNsName);
         admin.namespaces().setNamespaceReplicationClusters(TenantAndNsName, Sets.newHashSet(clusterName));
     }
